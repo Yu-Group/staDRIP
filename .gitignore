@@ -3,3 +3,4 @@ cache/*
 ccle_variance_filtered_cache/*
 ccle_variance_filtered_files/*
 figure/*
+data/raw/*
