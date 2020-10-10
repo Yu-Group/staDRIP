@@ -1148,11 +1148,19 @@ We can further see in Figure \@ref(fig:kernel-preds) that for a given drug, the 
 
 ```{r kernel-preds, echo = F, fig.cap="After fitting kernel ridge regression on each molecular profile separately, we plot the predicted Erlotinib AUC responses on the validation data. Though the predictions are positively correlated, there is still considerable variability across the non-integrative model predictions."}
 
+drug.id <- 5  # drug = erlotinib
 kernel.preds.ls <- list()
 for (type in c("mirna", "methyl", "rnaseq", "prot")) {
-  Xvalid <- as.matrix(all.data.valid[[type]])
-  kernel.fit <- readRDS(paste0(save.path, type, "_kernel_fits.rds"))[[5]]
-  kernel.preds.ls[[type]] <- predict(kernel.fit, newdata = Xvalid)$fit
+  if (file.exists(paste0(save.path, type, "_kernel_validation_preds.rds"))) {
+    kernel.preds.ls[[type]] <- readRDS(
+      paste0(save.path, type, "_kernel_validation_preds.rds")
+    )[, drug.id]
+  } else {
+    Xvalid <- as.matrix(all.data.valid[[type]])
+    kernel.fit <- readRDS(paste0(save.path, type, 
+                                 "_kernel_fits.rds"))[[drug.id]]
+    kernel.preds.ls[[type]] <- predict(kernel.fit, newdata = Xvalid)$fit
+  }
 }
 kernel.preds <- as.data.frame(do.call(cbind, kernel.preds.ls)) %>%
   setNames(c("miRNA", "Methylation", "RNASeq", "Protein"))
