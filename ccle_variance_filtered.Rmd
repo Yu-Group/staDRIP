@@ -1938,8 +1938,10 @@ agg.metrics <- rbind(agg.metrics, agg.metrics.int)
 
 Table \@ref(tab:table-integrative-pred-res) compares the validation accuracies between the integrative and non-integrative methods when aggregating the prediction accuracies across all 24 drugs. We see that in this case, the data integration methods do not improve the prediction accuracy as one might hope.
 
-```{r table-integrative-pred-res, echo = F}
+```{r table-integrative-pred-res, echo = F, eval = F}
+
 # validation accuracies for non-integrative approaches
+
 wide.agg.metrics.ls <- list()
 for (m in unique(agg.metrics$metric)) {
   wide.agg.metrics.ls[[m]] <- agg.metrics %>%
@@ -2223,13 +2225,11 @@ rnaseq = all.data[['rnaseq']]
 get_stab_scores <- function(drug, boot = 100){
     
     protein.escv.model = rep(0, ncol(protein))
-    protein.cv.model = rep(0, ncol(protein))
-    protein.kernel.model = rep(0, ncol(protein))
     protein.rf.model = rep(0, ncol(protein))
     rnaseq.escv.model = rep(0, ncol(rnaseq))
-    rnaseq.kernel.model = rep(0, ncol(rnaseq))
-    rnaseq.cv.model = rep(0, ncol(rnaseq))
     rnaseq.rf.model = rep(0, ncol(rnaseq))
+    protein.enet.model = rep(0, ncol(protein))
+    rnaseq.enet.model = rep(0, ncol(rnaseq))
     n = nrow(rnaseq)
     
     for(i in 1:boot){
@@ -2255,9 +2255,12 @@ get_stab_scores <- function(drug, boot = 100){
         protein.df = data.frame(as.matrix(x.train.protein), y = y.train)
         ra = ranger(y~., data = protein.df, num.trees = 100, importance = 'impurity')
         
+        # enet
+        protein.enet = cv.glmnet(x_train_protein, y_train, alpha = 0.5, nfolds = 5, nlambda = 20) 
+        
         
         protein.escv.model = protein.escv.model + (coef(protein.escv$glmnet.fit, s = protein.escv$lambda.escv)[-1] !=0)
-        protein.cv.model = protein.cv.model + (coef(protein.escv$glmnet.fit, s = protein.escv$lambda.cv)[-1] !=0)
+        protein.enet.model = protein.enet.model + (coef(protein.enet, s = protein.enet$lambda.min)[-1] !=0)
         #thresh_rf = mean(ra$variable.importance) + 2*sqrt(var(ra$variable.importance))
         protein.rf.model = protein.rf.model + (ra$variable.importance)
         
@@ -2269,31 +2272,36 @@ get_stab_scores <- function(drug, boot = 100){
                                   y.train, 
                                   lambda = seq(0, 0.2, 0.002),
                                   nfolds = 5)
+        
         rnaseq.df = data.frame(as.matrix(x.train.rnaseq), y = y.train)
         ra = ranger(y~., data = rnaseq.df, num.trees = 100, importance = 'impurity')
+        
+        rnaseq.enet = cv.glmnet(x_train_rnaseq, y_train, alpha = 0.5, nfolds = 5, nlambda = 20)
 
         rnaseq.escv.model = rnaseq.escv.model + (coef(rnaseq.escv$glmnet.fit, s = rnaseq.escv$lambda.escv)[-1] !=0)
-        rnaseq.cv.model = rnaseq.cv.model + (coef(rnaseq.escv$glmnet.fit, s = rnaseq.escv$lambda.cv)[-1] !=0)
+        rnaseq.enet.model = rnaseq.enet.model + (coef(rnaseq.enet, s = rnaseq.enet$lambda.min)[-1] !=0)
         #thresh_rf = mean(ra$variable.importance) + 2*sqrt(var(ra$variable.importance))
         rnaseq.rf.model = rnaseq.rf.model + (ra$variable.importance) 
 
     }
     return(list(rnaseq.escv = rnaseq.escv.model,
                 rnaseq.rf = rnaseq.rf.model,
-                rnaseq.cv = rnaseq.cv.model,
+                rnaseq.enet = rnaseq.enet.model,
                 protein.escv = protein.escv.model,
                 protein.rf = protein.rf.model,
-                protein.cv = protein.cv.model))
+                protein.enet = protein.enet.model
+                ))
 }
 
 scores = mclapply(1:24, get_stab_scores, mc.cores = 6)
 
-saveRDS(scores, paste0(save.path, "stab_scores_sep.rds"))
+saveRDS(scores, paste0(save.path, "stab_scores_separate.rds"))
 ```
 
 ```{r overlap-features}
 
-scores = readRDS(paste0(save.path, "stab_scores_sep.rds"))
+scores = readRDS(paste0(save.path, "stab_scores_separate.rds"))
+
 stab.features = data.frame(prot = rep(" ", 24), rnaseq = rep(" ", 24), stringsAsFactors = FALSE)
 rownames(stab.features) = colnames(drug.resp)
 protein = all.data[['prot']]
@@ -2310,23 +2318,30 @@ for (drug in 1:24){
     
     score = scores[[drug]]
     protein.escv.top = order(score[['protein.escv']], decreasing = TRUE)[1:10]
-    protein.cv.top = order(score[['protein.cv']], decreasing = TRUE)[1:10]
+    protein.enet.top = order(score[['protein.enet']], decreasing = TRUE)[1:10]
     protein.rf.top = order(score[['protein.rf']], decreasing = TRUE)[1:10]
     rnaseq.escv.top = order(score[['rnaseq.escv']], decreasing = TRUE)[1:10]
-    rnaseq.cv.top = order(score[['rnaseq.cv']], decreasing = TRUE)[1:10]
+    rnaseq.enet.top = order(score[['rnaseq.enet']], decreasing = TRUE)[1:10]
     rnaseq.rf.top = order(score[['rnaseq.rf']], decreasing = TRUE)[1:10]
-    protein.index = intersect(intersect(protein.escv.top, protein.rf.top), protein.cv.top)
-    rnaseq.index = intersect(intersect(rnaseq.escv.top, rnaseq.cv.top), rnaseq.rf.top)
+    protein.index = intersect(intersect(protein.escv.top, protein.rf.top), protein.enet.top)
+    rnaseq.index = intersect(intersect(rnaseq.escv.top, rnaseq.enet.top), rnaseq.rf.top)
+    rank.sum = sapply(protein.index, 
+                      function(pi) {which(protein.escv.top == pi) + 
+                                      which(protein.enet.top == pi) +
+                                    which(protein.rf.top == pi)})
+    rank.sum.rnaseq = sapply(rnaseq.index, 
+                      function(pi) {which(rnaseq.escv.top == pi) + 
+                                      which(rnaseq.enet.top == pi) +
+                                    which(rnaseq.rf.top == pi)})
 
     protein.features = colnames(protein)[protein.index]
     rnaseq.features = sapply(rnaseq.index, 
                              function(index) rnaseq.dict[[colnames(rnaseq)[index]]])
-    stab.features[drug,] = c(as.character(paste(protein.features, collapse = ", ")), 
-                             as.character(paste(rnaseq.features, collapse = ", ")))
+    stab.features[drug,] = c(as.character(paste(protein.features[order(rank.sum)], collapse = ", ")), as.character(paste(rnaseq.features[order(rank.sum.rnaseq)], collapse = ", ")))
 }
 
 myKable(stab.features,
-        caption = "Stable protein and RNAseq signatures. A feature is included if it is among the top 10 most stable features under 3 different machine learning models (i.e., Lasso (CV), Lasso (ESCV), and random forest). The stability of the features are computed from the PCS inference framework. Blank cells indicate that no features appeared among the top 10 most stable features for all three models.")
+        caption = "Stable protein and RNAseq signatures. A feature is included if it is among the top 10 most stable features under 3 different machine learning models (i.e., Elastic net (CV), Lasso (ESCV), and random forest). The stability of the features are computed from the PCS inference framework. Blank cells indicate that no features appeared among the top 10 most stable features for all three models.")
 
 ```
 
