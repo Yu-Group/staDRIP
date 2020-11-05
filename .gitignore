@@ -4,3 +4,7 @@ ccle_variance_filtered_cache/*
 ccle_variance_filtered_files/*
 figure/*
 data/raw/*
+results/var_filtered/*_fits.rds
+results/cor_filtered/*_fits.rds
+results/lasso_filtered/*_fits.rds
+results/var_filtered_big_p/*_fits.rds
