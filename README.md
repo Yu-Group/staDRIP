@@ -2,7 +2,7 @@
 
 This repository contains all code, results, and documentation to accompany Xiao Li, Tiffany M. Tang, Xuewei Wang, Jean-Pierre Kocher, Bin Yu ''A stability-driven protocol for drug response interpretable prediction (staDRIP)'' (2020). 
 
-In this work, we develop staDRIP, a transparent stability-driven pipeline to predict a cell line's response to therapeutic drugs given its unique -omic profile. This pipeline builds upon the PCS framework for veridical data science [Yu and Kumbier, 2020](https://www.pnas.org/content/117/8/3920) and helps to mitigate the impact of human judgment calls throughout the scientific knowledge extraction process.
+In this work, we develop staDRIP, a transparent stability-driven pipeline to predict a cell line's response to therapeutic drugs given its unique -omic profile. This pipeline builds upon the PCS framework for veridical data science [(Yu and Kumbier, 2020)](https://www.pnas.org/content/117/8/3920) and helps to mitigate the impact of human judgment calls throughout the scientific knowledge extraction process.
 
 
 ## PCS Documentation
