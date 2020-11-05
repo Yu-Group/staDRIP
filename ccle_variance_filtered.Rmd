@@ -49,6 +49,8 @@ library(ggridges)
 library(KRLS)
 library(parallel)
 library(doParallel)
+library(VennDiagram)
+library(png)
 
 # load in all utility functions from folder
 for (fname in list.files("functions", full.names = T)) {
@@ -405,13 +407,13 @@ concat.data.test <- do.call(cbind, all.data.test)
 
 ```
 
-We recognize however that there were many other reasonable ways to preprocess this data. For instance, we could have taken the top 20\% of genes and top 40\% of TSS with the highest variance. Another common alternative would have been to filter features using marginal correlations with the response or using a multivariate prediction model (e.g., the Lasso). To assess robustness to these choices, we reran our analysis using the following alternative preprocessing procedures in ***ccle_preprocessing_alternatives.Rmd***: 
+We recognize however that there were many other reasonable ways to preprocess this data. For instance, we could have taken the top 20\% of genes and top 40\% of TSS with the highest variance. Another common alternative would have been to filter features using marginal correlations with the response or using a multivariate prediction model (e.g., the Lasso). To assess robustness to these choices, we provide a further investigation into the following alternative preprocessing procedures in the Appendix: 
 
 * Variance-filtering, taking the top $20\%$ of genes and $40\%$ of TSS (i.e., building a model twice as large as the current work)
 * Filtering by marginal correlations between the features and drug responses, taking the top $10\%$ of genes and $20\%$ of TSS
 * Using the Lasso for filtering and keeping the top $10\%$ of genes and $20\%$ of TSS with the largest coefficients (in magnitude)
 
-Across these different preprocessing procedures, the prediction accuracies are relatively stable across the number of features taken as well as the filtering method. Due to the high computational complexity of fitting numerous models (and data-perturbed models) for 24 drugs, we thus choose to focus our attention on the variance-filtering procedure, taking the top $10\%$ of genes and $20\%$ of TSS. This procedure is preferred over the alternatives as it is less computationally expensive than the model with twice as many features, and while marginal correlations and multivariate prediction models such as the Lasso look at the response, variance-filtering avoids any risk of data snooping and over-fitting. Moving forward, we will use and focus primarily on the variance-filtering procedure, taking the top $10\%$ of genes and $20\%$ of TSS.
+Across these different preprocessing procedures, the prediction accuracies are higher using the variance-filtering preprocessing pipelines, as compared to the correlation-filtering and Lasso-filtering pipelines. Further, the smaller variance-filtered model gives similar prediction accuracies as the larger variance-filtered model. Due to the high computational complexity of fitting numerous models (and data-perturbed models) for 24 drugs, we thus choose to focus our attention on the more restrictive variance-filtering procedure, taking the top $10\%$ of genes and $20\%$ of TSS. This procedure is also preferred over the alternatives as it is less computationally expensive than the model with twice as many features, and while marginal correlations and multivariate prediction models such as the Lasso look at the response, variance-filtering avoids any risk of data snooping and over-fitting. Moving forward, we will use and focus primarily on the variance-filtering procedure, taking the top $10\%$ of genes and $20\%$ of TSS.
 
 To summarize, after preprocessing and data cleaning, we arrive at $370$ cell lines with molecular data across the four molecular profiles of interest:
 
@@ -495,7 +497,7 @@ Note that though an alternative approach would have been to develop new methodol
 To measure the accuracy of the models, we consider many different metrics as each captures a different aspect of prediction and has advantages and disadvantages:
 
 1. **Mean-squared Error** ($MSE$) = the mean sum of squared errors between the predicted responses and the observed responses. This is the most widely used prediction metric in machine learning but can be volatile due to outliers.
-2. **$R^2$** = $1 - \frac{\text{MSE}(Y, \hat{Y})}{\text{Var}(Y)}$, where $\text{Var}(Y)$ denotes the variance of the observed responses, and $\text{MSE}(Y, \hat{Y})$ denotes the mean sum of squared errors between the predicted responses $\hat{Y}$ and observed responses $Y$. $R^2$ is a rescaling of the MSE that accounts for the amount of variation in the observed response and thus allows us to more easily compare accuracies between drug response models with different amounts of variation in the observed response, but as with the MSE, $R^2$ can be heavily influenced by outliers. 
+2. **R-squared** ($R^2$) = $1 - \frac{\text{MSE}(Y, \hat{Y})}{\text{Var}(Y)}$, where $\text{Var}(Y)$ denotes the variance of the observed responses, and $\text{MSE}(Y, \hat{Y})$ denotes the mean sum of squared errors between the predicted responses $\hat{Y}$ and observed responses $Y$. $R^2$ is a rescaling of the MSE that accounts for the amount of variation in the observed response and thus allows us to more easily compare accuracies between drug response models with different amounts of variation in the observed response, but as with the MSE, $R^2$ can be heavily influenced by outliers. 
 3. **Correlation** = the (Pearson) correlation between the predicted responses and the observed responses. The correlation metric is scale-invariant and thus conveniently enables direct comparisons between models for different drugs.
 4. **Probabilistic concordance-index (*PC*-index)** = a measure of how well the predicted rankings agree with the true responses. This metric, like the correlation metric, takes into account the variance of the drug responses, $y$, but it also assumes that the drug responses follow a Gaussian distribution, which may not be true in some cases. We consider this metric because it is the primary method of evaluation in @costello2014. Given the large scale and breadth of the NCI-DREAM challenge in @costello2014, we will compare our results to this work. We refer to @costello2014 for details on the exact computation of the PC-index.
 
@@ -504,7 +506,7 @@ In each of the proposed evaluation metrics above, we receive a score for each of
 <!-- # Stability formulation {#sec:stability_form} -->
 # Stability formulation
 
-Beyond predictability checks, we emphasize the importance of stability throughout the data science life cycle so as to reduce reliance on particular human judgment calls. In particular, our primary goal is to identify the genes and proteins which are predictive of drug sensitivity, and stability serves as a minimium requirement in this scientific knowledge discovery. Ultimately, successfully identifying these -omic features that are stable and predictive of drug sensitivity is a first step towards a more reliable scientific recommendation system for preclinical research. This has important practical implications, especially given the reliance and success of hypothesis-driven studies in previous cancer research.
+Beyond predictability checks, we emphasize the importance of stability throughout the data science life cycle so as to reduce reliance on particular human judgment calls. In particular, our primary goal is to identify the genes and proteins which are predictive of drug sensitivity, and stability serves as a minimum requirement in this scientific knowledge discovery. Ultimately, successfully identifying these -omic features that are stable and predictive of drug sensitivity is a first step towards a more reliable scientific recommendation system for preclinical research. This has important practical implications, especially given the reliance and success of hypothesis-driven studies in previous cancer research.
 
 With this goal of reliable interpretability in mind, we leverage the stability principle and quantify the stability of important features under numerous data and model perturbations. Here, we say an -omic feature is *stable* if it is stable across both data-perturbed bootstrap samples and across multiple models with similarly high predictive power. That is, if a particular feature is frequently selected or deemed important even when slightly perturbing the data via bootstrap samples and when using different models, then we say that the feature is *stable*. This stability across data perturbations and models gives us evidence to believe that the feature is associated with the desired response (in this case, the drug sensitivity measured via AUC). 
 
@@ -1252,6 +1254,7 @@ out <- foreach(drug = 1:ndrugs,
        rf.fits = rf.fit,
        lasso.preds = lasso.pred,
        lasso.escv.preds = lasso.escv.pred,
+       elnet.preds = elnet.pred,
        kernel.preds = kernel.pred,
        rf.preds = rf.pred)
 }
@@ -1938,7 +1941,7 @@ agg.metrics <- rbind(agg.metrics, agg.metrics.int)
 
 Table \@ref(tab:table-integrative-pred-res) compares the validation accuracies between the integrative and non-integrative methods when aggregating the prediction accuracies across all 24 drugs. We see that in this case, the data integration methods do not improve the prediction accuracy as one might hope.
 
-```{r table-integrative-pred-res, echo = F, eval = F}
+```{r table-integrative-pred-res, echo = F}
 
 # validation accuracies for non-integrative approaches
 
@@ -2063,7 +2066,7 @@ for (type in c("rnaseq", "prot", "methyl", "mirna", "integrated")) {
 
 ```
 
-To conclude our investigation of the prediction performances, we finally report an unbiased estimate of the test prediction error for our model-building pipeline. That is, we use our best model, the RNASeq-trained kernel ridge regression model, to predict the drug responses for cell lines in the test set and report an estimated test MSE ($\pm$ 1SD) of 0.503 ($\pm$ 0.039), $R^2$ of 0.204 ($\pm$ 0.038), correlation of 0.453 ($\pm$ 0.041), and WPC-index of 0.620 ($\pm$ 0.0075) across the 24 drugs. The individual drug-level prediction accuracies for the test set are provided in Table \@ref(tab:test-err-by-drug).
+To conclude our investigation of the prediction performances, we finally report an unbiased estimate of the test prediction error for our model-building pipeline. That is, we use our best model, the RNASeq-trained kernel ridge regression model, to predict the drug responses for cell lines in the test set and report an estimated test MSE ($\pm$ 1SD) of 0.503 ($\pm$ 0.039), $R^2$ of 0.204 ($\pm$ 0.038), correlation of 0.453 ($\pm$ 0.041), and WPC-index of 0.620 ($\pm$ 0.0075) across the 24 drugs. The individual drug-level prediction accuracies for the test set are provided in the table below.
 
 ```{r kernel-test-fits, eval = F}
 
@@ -2214,6 +2217,22 @@ myDT(kernel.res, caption = "We evaluate the test MSE, R-squared, correlation, an
 <!-- # Stability analysis {#sec:stability} -->
 # Stability analysis
 
+Given that the predictive performance is fairly similar across most models discussed above, understanding the important features that led to the predicted drug responses and are stable across models may be of more interest. Many of the models discussed previously (namely, the Lasso, elastic net, and RF) provide measures of feature importance. We will discuss these selected features here. 
+
+In our work, we are primarily interested in identifying protein and gene signatures that are associated with a particular drug's response. This is because (1) protein and RNA signatures are directly related to the known drug targets, and thus, it is easier to compare genomic signatures found by our procedure with those previously identified in biomedical literature; (2) the protein and RNASeq data sets have the highest predictive accuracy when used alone in training. 
+
+The details of our pipeline are as follows. 
+First, we randomly draw $B=100$ bootstrap samples $\mathcal{D}^{(b)}, b=1, \dots, 100$ from 
+the training data. For the CCLE dataset, bootstrapping is considered as appropriate data perturbation. For each bootstrap sample, we consider 3 models, which were shown to have high predictive accuracies in the previous section and hence are reasonable fits for the data: (1) Lasso with tuning parameter selected by ESCV (2) Elastic net with tuning parameter selected by CV and (3) Random Forest. Note that although Gaussian kernel ridge regression has the highest average prediction accuracy over 24 drugs, extracting relevant feature importance measures from the fitted kernel regression model remains to be an open question. 
+
+Each of the above three models is fitted using 
+the protein and RNASeq data separately.
+We fit separate models to the two data sets due to both the need to jointly interpret the RNASeq and protein expressions and the aforementioned limitations of the alternative concatenating approach. 
+Next, for each feature $X_j$ from either the protein or RNASeq data set, let $\omega_j^{(b)}$ be defined in the following way: for the Lasso and elastic net, $\omega_j^{(b)}=1$ if the coefficient of $X_j$ is non-zero, and $\omega_j^{(b)}=0$ otherwise; for the random forest, $\omega_j^{(b)}$ is the MDI feature importance of $X_j$.
+We then define the stability score $\text{sta}(X_j)$ of each feature $X_j$ as 
+$\text{sta}(X_j) = \frac{1}{B}\sum_{b=1}^{B}\omega_j^{(b)}$ and rank the proteins and genes separately by the stability scores of the features. 
+There are several proteins and genes which we found to be among the top 10 features, ranked by stability score, for all three models. These stable features are listed in Table \@ref(tab:overlap-features).
+
 ```{r pcs-inference, eval = F}
 
 set.seed(123567)
@@ -2340,27 +2359,12 @@ for (drug in 1:24){
     stab.features[drug,] = c(as.character(paste(protein.features[order(rank.sum)], collapse = ", ")), as.character(paste(rnaseq.features[order(rank.sum.rnaseq)], collapse = ", ")))
 }
 
-myKable(stab.features,
-        caption = "Stable protein and RNAseq signatures. A feature is included if it is among the top 10 most stable features under 3 different machine learning models (i.e., Elastic net (CV), Lasso (ESCV), and random forest). The stability of the features are computed from the PCS inference framework. Blank cells indicate that no features appeared among the top 10 most stable features for all three models.")
+myKable(stab.features %>%
+          rownames_to_column("Drug") %>%
+          setNames(c("Drug", "Proteins", "RNASeq")),
+        caption = "Stable protein and RNASeq signatures. A feature is included if it is among the top 10 most stable features under 3 different machine learning models (i.e., elastic net (CV), Lasso (ESCV), and random forest). The stability of the features are computed from the PCS inference framework. Blank cells indicate that no features appeared among the top 10 most stable features for all three models.")
 
 ```
-
-Given that the predictive performance is fairly similar across most models discussed above, understanding the important features that led to the predicted drug responses and are stable across models may be of more interest. A couple of the models discussed previously (namely, the Lasso and RF) provide measures of feature importance, and we will discuss these selected features here. 
-
-In our work, we are primarily interested in identifying protein and gene signatures that are associated with a particular drug's response. This is because (1) protein and RNA signatures are directly related to the known drug targets, and it is easier to compare genomic signatures found by our procedure with those previously identified in biomedical literature; (2) the protein and RNAseq data set have the highest predictive accuracy when using alone. 
-
-The details of our pipeline are as follows. 
-First, we randomly draw $B=100$ bootstrap samples $\mathcal{D}^{(b)}, b=1, \dots, 100$ from 
-the training data. For the CCLE dataset, bootstrapping is considered as appropriate data perturbation. For each bootstrap sample, we consider 3 models, which were shown to have high predictive accuracies in the previous section and hence are reasonable fits for the data: (1) Lasso with tuning parameter selected by ESCV (2) Lasso with tuning parameter selected by ESCV and (3) Random Forest. Note that although Gaussian kernel ridge regression has the highest average prediction accuracy over 24 drugs, extracting relevant feature importance measures from the fitted kernel regression model remains to be an open question. 
-
-Each of the above three models is fitted using 
-the protein and RNAseq data separately.
-We fit separate models to the two datasets due to the need to jointly interpret the RNASeq and protein expressions and the aforementioned limitations of the alternative concatenating approach. 
-Next, for each feature $X_j$ from either the protein or RNAseq data set, let $\omega_j^{(b)}$ be defined in the following way: for the Lasso, $\omega_j^{(b)}=1$ if the coefficient of $X_j$ is non-zero, and $\omega_j^{(b)}=0$ otherwise; for the random forest, $\omega_j^{(b)}$ is the MDI feature importance of $X_j$.
-We then define the stability score $\text{sta}(X_j)$ of each feature $X_j$ as 
-$\text{sta}(X_j) = \frac{1}{B}\sum_{b=1}^{B}\omega_j^{(b)}$ and rank the proteins and genes separately by the stability scores of the features. 
-There are several proteins and genes which we found to be among the top 10 features, ranked by stability score, for all three models. These stable features are listed in Table \@ref(tab:overlap-features).
-
 
 <!-- # Discussion {#sec:disc} -->
 # Discussion
@@ -2368,4 +2372,689 @@ There are several proteins and genes which we found to be among the top 10 featu
 Rooted by the PCS framework, we emphasize the importance of predictability, (computability), and stability as minimum requirements for extracting scientific knowledge throughout the staDRIP pipeline. We show that, guided by good prediction performance, incorporating a number of stability checks and extracting the stable parts of top-performing models can help to avoid the poor generalization exhibited by existing methods and can successfully identify candidate therapeutic targets for future preclinical research. We also acknowledge that while many stability considerations are built into staDRIP, there are inevitably human judgment calls that still impact our analysis. This documentation is one effort to ensure transparency and appropriate justifications for these decisions.
 
 
-# Bibliography
+# Appendix {-}
+
+## Alternative Preprocessing Pipelines {- .tabset .tabset-pills .tabset-fade}
+
+In our main analysis described above, we filtered the number of features in our models by taking the top $10\%$ of genes (or 5000 genes) and top $20\%$ of TSS (or 4000 TSS) with the highest variance. However, there are many ways in which we can filter the number of features in the data. The purpose of this section is to further investigate the prediction accuracies across other preprocessing choices, namely,
+
+* taking the top $20\%$ of genes and $40\%$ of TSS with the highest variance (i.e., building a model twice as large as the original preprocessing procedure);
+* taking the top $10\%$ of genes and $20\%$ of TSS with the highest marginal (Pearson) correlations with the drug response;
+* fitting the Lasso on the full RNASeq and methylation data sets and taking the top $10\%$ of genes and top $20\%$ of TSS with the largest Lasso coefficients (in magnitude). [Note: other machine learning models (e.g., RF) could have been used in place of the Lasso, but due to computational constraints, we chose to use a simple method like the Lasso.]
+
+```{r alt-preprocess-data}
+ 
+# read in pre-processed training, validation, and test sets -------------------
+train <- readRDS("./data/train.rds")
+valid <- readRDS("./data/valid.rds")
+
+# training data ---------------------------------------------------------------
+drug.resp <- train$drug_resp
+mirna <- train$mirna
+rnaseq <- train$rnaseq
+methyl <- train$methyl
+prot <- train$prot
+
+# helper variables
+nvalid <- nrow(valid$drug_resp)
+ndrugs <- ncol(drug.resp)
+types <- c("mirna", "rnaseq", "methyl", "prot") # data types
+
+# remove columns in rnaseq with no variance
+rnaseq <- rnaseq %>%
+  select(-which(apply(., 2, var) == 0))
+
+# impute NAs in methylation with the column mean
+methyl.imputed <- impute_mean(methyl) %>%
+  # remove columns in methyl with no variance
+  select(-which(apply(., 2, var, na.rm = T) == 0))
+
+# get tissue type for each cell line
+cell.lines <- rownames(drug.resp)
+tissue <- str_split(cell.lines, pattern = "_", n = 2, simplify = T)[, 2] %>%
+  as.factor()
+
+# validation data -------------------------------------------------------------
+mirna.valid <- valid$mirna
+rnaseq.valid <- valid$rnaseq[, colnames(rnaseq)]
+methyl.valid <- valid$methyl[, colnames(methyl.imputed)] %>%
+  replace_na(data = ., replace = as.list(colMeans(methyl.imputed)))
+prot.valid <- valid$prot
+resp.valid <- valid$drug_resp
+
+# get tissue type for each cell line in validation set
+cell.lines.valid <- rownames(resp.valid)
+tissue.valid <- str_split(cell.lines.valid,
+  pattern = "_",
+  n = 2, simplify = T
+)[, 2] %>%
+  as.factor()
+
+# filter features -------------------------------------------------------------
+if (file.exists("./results/var_filtered/rnaseq_features.rds")) {
+  rnaseq.names.orig <- readRDS("./results/var_filtered/rnaseq_features.rds")
+  methyl.names.orig <- readRDS("./results/var_filtered/methyl_features.rds")
+  rnaseq.names.var <- readRDS("./results/var_filtered_big_p/rnaseq_features.rds")
+  methyl.names.var <- readRDS("./results/var_filtered_big_p/methyl_features.rds")
+  rnaseq.names.cor <- readRDS("./results/cor_filtered/rnaseq_features.rds")
+  methyl.names.cor <- readRDS("./results/cor_filtered/methyl_features.rds")
+  rnaseq.names.lasso <- readRDS("./results/lasso_filtered/rnaseq_features.rds")
+  methyl.names.lasso <- readRDS("./results/lasso_filtered/methyl_features.rds")
+} else {
+  # variance filtering with big p
+  rnaseq.names.var <- rep(list(names(filterByVar(dat = rnaseq, max.p = 10000))), 
+                          ndrugs)
+  methyl.names.var <- rep(list(names(filterByVar(dat = methyl.imputed, 
+                                                 max.p = 8000))),
+                          ndrugs)
+  
+  # original feature list
+  rnaseq.names.orig <- names(filterByVar(rnaseq, max.p = 5000))
+  methyl.names.orig <- names(filterByVar(methyl.imputed, max.p = 5000))
+
+  # drug-dependent filtering
+  rnaseq.names.cor <- list()
+  methyl.names.cor <- list()
+  methyl.names.lasso <- list()
+  rnaseq.names.lasso <- list()
+  for (drug in 1:ndrugs) {
+    # original data
+    rnaseq.filt <- log(rnaseq + 1)
+    methyl.filt <- methyl.imputed
+    
+    # remove data with missing responses
+    missing.idx <- which(is.na(drug.resp[, drug]))
+    if (length(missing.idx) >= 1) {
+      rnaseq.filt <- removeZeroVarCols(rnaseq.filt[-missing.idx, ])
+      methyl.filt <- removeZeroVarCols(methyl.filt[-missing.idx, ])
+      y <- drug.resp[-missing.idx, drug]
+    } else {
+      y <- drug.resp[, drug]
+    }
+    
+    # filter by correlation
+    rnaseq.names.cor[[drug]] <- names(filterByCor(dat = rnaseq.filt,
+                                                  y = y, max.p = 5000))
+    methyl.names.cor[[drug]] <- names(filterByCor(dat = methyl.filt, 
+                                                  y = y, max.p = 4000))
+    
+    # filter by Lasso
+    rnaseq.names.lasso[[drug]] <- colnames(filterByLasso(as.matrix(rnaseq.filt), 
+                                                         y = y, max.p = 5000))
+    methyl.names.lasso[[drug]] <- colnames(filterByLasso(as.matrix(methyl.filt), 
+                                                         y = y, max.p = 4000))
+  }
+  
+  saveRDS(rnaseq.names.orig, "./results/var_filtered/rnaseq_features.rds")
+  saveRDS(methyl.names.orig, "./results/var_filtered/methyl_features.rds")
+  saveRDS(rnaseq.names.var, "./results/var_filtered_big_p/rnaseq_features.rds")
+  saveRDS(methyl.names.var, "./results/var_filtered_big_p/methyl_features.rds")
+  saveRDS(rnaseq.names.cor, "./results/cor_filtered/rnaseq_features.rds")
+  saveRDS(methyl.names.cor, "./results/cor_filtered/methyl_features.rds")
+  saveRDS(rnaseq.names.lasso, "./results/lasso_filtered/rnaseq_features.rds")
+  saveRDS(methyl.names.lasso, "./results/lasso_filtered/methyl_features.rds")
+}
+
+# path to save results to
+save.paths <- c("./results/var_filtered_big_p/",
+                "./results/cor_filtered/",
+                "./results/lasso_filtered/")
+
+# put training data in list
+all.data <- list(
+  mirna = log(mirna + 1),
+  rnaseq = log(rnaseq + 1),
+  methyl = methyl.imputed,
+  prot = prot
+)
+
+# put validation data in list
+all.data.valid <- list(
+  mirna = log(mirna.valid + 1),
+  rnaseq = log(rnaseq.valid + 1),
+  methyl = methyl.valid,
+  prot = prot.valid
+)
+
+# put data in concatenated data matrix
+concat.data <- do.call(cbind, all.data)
+concat.data.valid <- do.call(cbind, all.data.valid)
+
+# put filtered feature names in list
+rnaseq.names <- list(rnaseq.names.var, rnaseq.names.cor, rnaseq.names.lasso)
+names(rnaseq.names) <- save.paths
+methyl.names <- list(methyl.names.var, methyl.names.cor, methyl.names.lasso)
+names(methyl.names) <- save.paths
+
+# preprocessing procedures
+filts <- c("Variance-filtered (small p)", "Variance-filtered (big p)",
+           "Correlation-filtered", "Lasso-filtered")
+
+```
+
+Figure \@ref(fig:features-venn-cap) below shows the overlap of features selected by the various preprocessing procedures for each drug. 
+
+```{r features-venn, echo = FALSE, results = 'asis'}
+
+section_template <- "
+
+### %s {.unlisted .unnumbered}
+
+"
+
+for (drug in 1:ndrugs) {
+  cat(sprintf(section_template, colnames(drug.resp)[drug]))
+  img.paths <- c(
+    paste0("./figure/feature_preprocessing_stability_rnaseq_", drug, ".png"),
+    paste0("./figure/feature_preprocessing_stability_methyl_", drug, ".png"),
+    paste0("./figure/feature_preprocessing_stability_", drug, ".png")
+  )
+  venn.diagram(x = list(rnaseq.names.orig, 
+                        rnaseq.names.var[[drug]],
+                        rnaseq.names.cor[[drug]],
+                        rnaseq.names.lasso[[drug]]), 
+               filename = img.paths[1],
+               imagetype = "png",
+               height = 3000, 
+               width = 3000,
+               main = "RNASeq",
+               main.cex = 1.25,
+               main.fontfamily = "sans",
+               main.fontface = "bold",
+               main.pos = c(0.5, .975),
+               category.names = c("Variance-\n Filtered \n (small p)", 
+                                  "Variance-\n Filtered \n (big p)",
+                                  "Correlation-\n Filtered",
+                                  "Lasso-\n Filtered"),
+               col = c("cornflowerblue", "orange", '#31A959', "darkorchid1"),
+               lwd = 4,
+               fill = c("cornflowerblue", "orange", '#31A959', "darkorchid1"),
+               alpha = 0.30,
+               label.col = "black",
+               cex = 1.5,
+               fontfamily = "sans",
+               fontface = "bold",
+               cat.fontface = "bold",
+               cat.col = c("cornflowerblue", "orange", '#31A959',
+                           "darkorchid1"),
+               cat.cex = 1,
+               cat.just = list(c(0.5, 0.3), c(0.5, .3), c(0.5, .5), c(0.5, .6)),
+               cat.fontfamily = "sans")
+  
+  venn.diagram(x = list(methyl.names.orig, 
+                        methyl.names.var[[drug]],
+                        methyl.names.cor[[drug]],
+                        methyl.names.lasso[[drug]]), 
+               filename = img.paths[2],
+               imagetype = "png",
+               height = 3000, 
+               width = 3000,
+               main = "Methylation",
+               main.cex = 1.25,
+               main.fontfamily = "sans",
+               main.fontface = "bold",
+               main.pos = c(0.5, .975),
+               category.names = c("Variance-\n Filtered \n (small p)", 
+                                  "Variance-\n Filtered \n (big p)",
+                                  "Correlation-\n Filtered",
+                                  "Lasso-\n Filtered"),
+               col = c("cornflowerblue", "orange", '#31A959', "darkorchid1"),
+               lwd = 4,
+               fill = c("cornflowerblue", "orange", '#31A959', "darkorchid1"),
+               alpha = 0.30,
+               label.col = "black",
+               cex = 1.5,
+               fontfamily = "sans",
+               fontface = "bold",
+               cat.fontface = "bold",
+               cat.col = c("cornflowerblue", "orange", '#31A959',
+                           "darkorchid1"),
+               cat.cex = 1,
+               cat.just = list(c(0.5, 0.3), c(0.5, .3), c(0.5, .5), c(0.5, .6)),
+               cat.fontfamily = "sans")
+  
+  img1 <-  grid::rasterGrob(as.raster(readPNG(img.paths[1])),
+                            interpolate = FALSE)
+  img2 <-  grid::rasterGrob(as.raster(readPNG(img.paths[2])),
+                            interpolate = FALSE)
+  g <- arrangeGrob(img1, img2, nrow = 1, ncol = 2)
+  ggsave(file = img.paths[3], g, width = 10, height = 4)
+  subchunkify(knitr::include_graphics(img.paths[3]), plt.idx, 
+              fig_width = 6, fig_height = 8)
+  
+  # subchunkify(knitr::include_graphics(
+  #   c(paste0("./figure/feature_preprocessing_stability_rnaseq_", 
+  #            drug, ".png"),
+  #     paste0("./figure/feature_preprocessing_stability_methyl_", 
+  #            drug, ".png"))
+  # ), plt.idx, fig_width = 6, fig_height = 8)
+  plt.idx <- plt.idx + 1
+}
+```
+
+## {.unlisted .unnumbered .tabset .tabset-pills .tabset-fade}
+
+```{r features-venn-cap, echo = F, fig.cap = "We show the number of shared RNASeq and methylation features, selected from different preprocessing procedures when building a response model for the specified drug. Note that the variance-filtered (small p), correlation-filtered, and Lasso-filtered procedures each select 5000 genes and 4000 TSS while the variance-filtered (big p) procedure selects double the number of genes and TSS.", fig.height = .01, fig.width = .01}
+ggplot()
+```
+
+```{r alt-preprocessing-fits, eval = F}
+
+registerDoParallel(cores = 24)
+for (save.path in save.paths) {
+  
+  # fit non-integrative models for each of the 24 drugs
+  for (type in types) {
+    out <- foreach(drug = 1:ndrugs, 
+                   .packages = c("glmnet", "KRLS", "caret")) %dopar% {
+      
+      Xtrain <- as.matrix(all.data[[type]])
+      Xvalid <- as.matrix(all.data.valid[[type]])
+      
+      if (type == "rnaseq") {
+        Xtrain <- Xtrain[, rnaseq.names[[save.path]][[drug]]]
+        Xvalid <- Xvalid[, colnames(Xtrain)]
+      } else if (type == "methyl") {
+        Xtrain <- Xtrain[, methyl.names[[save.path]][[drug]]]
+        Xvalid <- Xvalid[, colnames(Xtrain)]
+      }
+      
+      # remove data with missing responses
+      missing.idx <- which(is.na(drug.resp[, drug]))
+      if (length(missing.idx) >= 1) {
+        Xtrain <- Xtrain[-missing.idx, ]
+        y <- drug.resp[-missing.idx, drug]
+        tissue.type <- tissue[-missing.idx]
+      }else {
+        y <- drug.resp[, drug]
+        tissue.type <- tissue
+      }
+      
+      # stratified cv folds
+      foldid <- data.frame(tissue = tissue.type) %>%
+        group_by(tissue) %>%
+        mutate(split.idx = sample(rep(1:nfolds, each = ceiling(n() / nfolds)),
+                                  size = n(), replace = F)) %>%
+        pull(split.idx)
+      
+      # fit lasso+cv
+      lasso.fit <- cv.glmnet(x = Xtrain, y = y, 
+                             nfolds = nfolds, alpha = 1, foldid = foldid)
+      
+      # fit lasso+escv
+      lambda.escv <- escv.glmnet(x = Xtrain, y = y, nfolds = nfolds, 
+                                 lambda = seq(0, 0.2, 0.002),
+                                 alpha = 1, foldid = foldid)$lambda.escv
+      lasso.escv.fit <- glmnet(x = Xtrain, y = y, alpha = 1, lambda = lambda.escv)
+      
+      # fit elastic net+cv
+      elnet.fit <- cv.glmnet(x = Xtrain, y = y,
+                             nfolds = nfolds, alpha = .5, foldid = foldid)
+      
+      # fit kernel
+      kernel.fit <- krls(X = Xtrain, y = y, 
+                         whichkernel = "gaussian", print.level = 0)
+    
+      # fit rf
+      rf.fit <- caret::train(
+        x = Xtrain, y = y, preProcess = NULL, method = "ranger",
+        tuneGrid = expand.grid(mtry = mtrys[[type]],
+                               splitrule = "variance",
+                               min.node.size = c(3, 5)),
+        trControl = trainControl(method = "cv",
+                                 number = nfolds,
+                                 verboseIter = F,
+                                 selectionFunction = "best", 
+                                 index = groupKFold(tissue.type, k = nfolds),
+                                 allowParallel = F),
+        importance = "impurity", num.trees = ntree, num.threads = 1
+      )$finalModel
+    
+      # make predictions
+      lasso.pred <- predict(lasso.fit, newx = Xvalid, s = "lambda.min")
+      lasso.escv.pred <- predict(lasso.escv.fit, newx = Xvalid)
+      elnet.pred <- predict(elnet.fit, newx = Xvalid, s = "lambda.min")
+      kernel.pred <- predict(kernel.fit, newdata = Xvalid)$fit
+      rf.pred <- predict(rf.fit, Xvalid, num.threads = 1)$predictions
+      
+      list(lasso.fits = lasso.fit,
+           lasso.escv.fits = lasso.escv.fit,
+           elnet.fits = elnet.fit,
+           kernel.fits = kernel.fit,
+           rf.fits = rf.fit,
+           lasso.preds = lasso.pred,
+           lasso.escv.preds = lasso.escv.pred,
+           elnet.preds = elnet.pred,
+           kernel.preds = kernel.pred,
+           rf.preds = rf.pred)
+    }
+    
+    lasso.fits <- lapply(out, FUN = function(X) {return(X$lasso.fits)})
+    lasso.escv.fits <- lapply(out, FUN = function(X) {return(X$lasso.escv.fits)})
+    elnet.fits <- lapply(out, FUN = function(X) {return(X$elnet.fits)})
+    kernel.fits <- lapply(out, FUN = function(X) {return(X$kernel.fits)})
+    rf.fits <- lapply(out, FUN = function(X) {return(X$rf.fits)})
+    lasso.preds <- mapply(out, FUN = function(X) {return(X$lasso.preds)})
+    lasso.escv.preds <- mapply(out, 
+                               FUN = function(X) {return(X$lasso.escv.preds)})
+    elnet.preds <- mapply(out, FUN = function(X) {return(X$elnet.preds)})
+    kernel.preds <- mapply(out, FUN = function(X) {return(X$kernel.preds)})
+    rf.preds <- mapply(out, FUN = function(X) {return(X$rf.preds)})
+    
+    indiv.preds.ls <- list(Lasso = lasso.preds,
+                           `Lasso (ESCV)` = lasso.escv.preds,
+                           `Elastic Net` = elnet.preds,
+                           Kernel = kernel.preds,
+                           RF = rf.preds)
+    
+    # compute mse
+    indiv.mse <- mapply(indiv.preds.ls, FUN = function(preds) {
+      return(colMeans((preds - resp.valid)^2, na.rm = T))
+    }) %>% t()
+    
+    # compute correlation
+    indiv.corr <- mapply(indiv.preds.ls, FUN = function(preds) {
+      return(diag(cor(x = preds, y = resp.valid, use = "pairwise.complete.obs")))
+    }) %>% t()
+    
+    # compute pc metric
+    pc.null <- pc.nulldist(resp.valid)
+    indiv.pc <- mapply(indiv.preds.ls, FUN = function(preds) {
+      return(pcs(preds, resp.valid, pc.null))
+    }) %>% t()
+    
+    # compute wpc metric
+    indiv.wpc <- mapply(indiv.preds.ls, FUN = function(preds) {
+      return(wpc(preds, resp.valid, pc.null))
+    })
+    
+    saveRDS(indiv.mse, paste0(save.path, type, "_mse.rds"))
+    saveRDS(indiv.corr, paste0(save.path, type, "_corr.rds"))
+    saveRDS(indiv.pc, paste0(save.path, type, "_pc.rds"))
+    saveRDS(indiv.wpc, paste0(save.path, type, "_wpc.rds"))
+    saveRDS(lasso.fits, paste0(save.path, type, "_lasso_fits.rds"))
+    saveRDS(lasso.escv.fits, paste0(save.path, type, "_lasso_escv_fits.rds"))
+    saveRDS(elnet.fits, paste0(save.path, type, "_elnet_fits.rds"))
+    saveRDS(kernel.fits, paste0(save.path, type, "_kernel_fits.rds"))
+    saveRDS(rf.fits, paste0(save.path, type, "_rf_fits.rds"))
+  }
+
+  # fit concatenated models
+  out <- foreach(drug = 1:ndrugs, 
+                 .packages = c("glmnet", "KRLS", "caret")) %dopar% {
+
+    # remove data with missing responses
+    missing.idx <- which(is.na(drug.resp[, drug]))
+    if (length(missing.idx) >= 1) {
+      Xtrain.ls <- lapply(all.data, FUN = function(X) {return(X[-missing.idx, ])})
+      Xvalid.ls <- all.data.valid
+      y <- drug.resp[-missing.idx, drug]
+      tissue.type <- tissue[-missing.idx]
+    } else {
+      Xtrain.ls <- all.data
+      Xvalid.ls <- all.data.valid
+      y <- drug.resp[, drug]
+      tissue.type <- tissue
+    }
+    
+    # filter features
+    Xtrain.ls$rnaseq <- Xtrain.ls$rnaseq[, rnaseq.names[[save.path]][[drug]]]
+    Xtrain.ls$methyl <- Xtrain.ls$methyl[, methyl.names[[save.path]][[drug]]]
+    
+    # concatenated data
+    Xtrain <- as.matrix(do.call(args = Xtrain.ls, what = cbind))
+    Xvalid <- as.matrix(do.call(args = Xvalid.ls, what = cbind))
+    Xvalid <- Xvalid[, colnames(Xtrain)]
+    
+    # stratified cv folds
+    foldid <- data.frame(tissue = tissue.type) %>%
+      group_by(tissue) %>%
+      mutate(split.idx = sample(rep(1:nfolds, each = ceiling(n() / nfolds)),
+                                size = n(), replace = F)) %>%
+      pull(split.idx)
+    
+    # fit lasso
+    lasso.fit <- cv.glmnet(x = Xtrain, y = y, 
+                           nfolds = nfolds, alpha = 1, foldid = foldid)
+    
+    # fit lasso+escv
+    lambda.escv <- escv.glmnet(x = Xtrain, y = y, nfolds = nfolds, 
+                               lambda = seq(0, 0.2, 0.002),
+                               alpha = 1, foldid = foldid)$lambda.escv
+    lasso.escv.fit <- glmnet(x = Xtrain, y = y, alpha = 1, lambda = lambda.escv)
+    
+    # fit elastic net
+    elnet.fit <- cv.glmnet(x = Xtrain, y = y, 
+                           nfolds = nfolds, alpha = 0.5, foldid = foldid)
+    
+    # fit kernel
+    kernel.fit <- krls(X = Xtrain, y = y, 
+                       whichkernel = "gaussian", print.level = 0)
+  
+    # fit rf
+    rf.fit <- caret::train(
+      x = Xtrain, y = y, preProcess = NULL, method = "ranger",
+      tuneGrid = expand.grid(mtry = seq(2000, 3000, by = 250),
+                             splitrule = "variance",
+                             min.node.size = c(3, 5)),
+      trControl = trainControl(method = "cv",
+                               number = nfolds,
+                               verboseIter = F,
+                               selectionFunction = "best",
+                               index = groupKFold(tissue.type, k = nfolds),
+                               allowParallel = F),
+      importance = "impurity", num.trees = ntree, num.threads = 1
+    )$finalModel
+    
+    # make predictions
+    lasso.pred <- predict(lasso.fit, newx = Xvalid, s = "lambda.min")
+    lasso.escv.pred <- predict(lasso.escv.fit, newx = Xvalid)
+    elnet.pred <- predict(elnet.fit, newx = Xvalid, s = "lambda.min")
+    kernel.pred <- predict(kernel.fit, newdata = Xvalid)$fit
+    rf.pred <- predict(rf.fit, Xvalid, num.threads = 1)$predictions
+    
+    list(lasso.fits = lasso.fit,
+         lasso.escv.fits = lasso.escv.fit,
+         elnet.fits = elnet.fit,
+         kernel.fits = kernel.fit,
+         rf.fits = rf.fit,
+         lasso.preds = lasso.pred,
+         lasso.escv.preds = lasso.escv.pred,
+         elnet.preds = elnet.pred,
+         kernel.preds = kernel.pred,
+         rf.preds = rf.pred)
+  }
+  
+  lasso.fits <- lapply(out, FUN = function(X) {return(X$lasso.fits)})
+  lasso.escv.fits <- lapply(out, FUN = function(X) {return(X$lasso.escv.fits)})
+  elnet.fits <- lapply(out, FUN = function(X) {return(X$elnet.fits)})
+  kernel.fits <- lapply(out, FUN = function(X) {return(X$kernel.fits)})
+  rf.fits <- lapply(out, FUN = function(X) {return(X$rf.fits)})
+  lasso.preds <- mapply(out, FUN = function(X) {return(X$lasso.preds)})
+  lasso.escv.preds <- mapply(out, FUN = function(X) {return(X$lasso.escv.preds)})
+  elnet.preds <- mapply(out, FUN = function(X) {return(X$elnet.preds)})
+  kernel.preds <- mapply(out, FUN = function(X) {return(X$kernel.preds)})
+  rf.preds <- mapply(out, FUN = function(X) {return(X$rf.preds)})
+  
+  concat.preds.ls <- list(Lasso = lasso.preds,
+                          `Lasso (ESCV)` = lasso.escv.preds,
+                          `Elastic Net` = elnet.preds,
+                           Kernel = kernel.preds,
+                           RF = rf.preds)
+  
+  # compute mse
+  concat.mse <- mapply(concat.preds.ls, FUN = function(preds) {
+    return(colMeans((preds - resp.valid)^2, na.rm = T))
+  }) %>% t()
+  
+  # compute correlation
+  concat.corr <- mapply(concat.preds.ls, FUN = function(preds) {
+    return(diag(cor(x = preds, y = resp.valid, use = "pairwise.complete.obs")))
+  }) %>% t()
+  
+  # compute pc metric
+  pc.null <- pc.nulldist(resp.valid)
+  concat.pc <- mapply(concat.preds.ls, FUN = function(preds) {
+    return(pcs(preds, resp.valid, pc.null))
+  }) %>% t()
+  
+  # compute wpc metric
+  concat.wpc <- mapply(concat.preds.ls, FUN = function(preds) {
+    return(wpc(preds, resp.valid, pc.null))
+  })
+  
+  saveRDS(concat.mse, paste0(save.path, "concatenated_mse.rds"))
+  saveRDS(concat.corr, paste0(save.path, "concatenated_corr.rds"))
+  saveRDS(concat.pc, paste0(save.path, "concatenated_pc.rds"))
+  saveRDS(concat.wpc, paste0(save.path, "concatenated_wpc.rds"))
+  saveRDS(lasso.fits, paste0(save.path, "concatenated_lasso_fits.rds"))
+  saveRDS(lasso.escv.fits, paste0(save.path, 
+                                  "concatenated_lasso_escv_fits.rds"))
+  saveRDS(elnet.fits, paste0(save.path, "concatenated_elnet_fits.rds"))
+  saveRDS(kernel.fits, paste0(save.path, "concatenated_kernel_fits.rds"))
+  saveRDS(rf.fits, paste0(save.path, "concatenated_rf_fits.rds"))
+}
+
+```
+
+```{r read-in-alt-preprocessing-results, echo = F}
+
+# compute variance for each drug response to compute R^2 metric from MSE
+valid.vars <- apply(resp.valid, 2,
+                    FUN = function(x) {
+                      n <- sum(!is.na(x))
+                      return((n-1) / n * var(x, na.rm = T))
+                    })
+
+# read in results from fits
+errs.ls <- list()  # errors for each individual drug
+agg.errs.ls <- list()  # errors aggregated across all 24 drugs
+types <- c("rnaseq", "methyl", "concatenated")
+for (type in types) {
+  for (save.path in c("./results/var_filtered/", save.paths)) {
+    new.errs.ls <- list()
+    new.agg.errs.ls <- list()
+    
+    new.errs.ls[["MSE"]] <- readRDS(paste0(save.path, type, "_mse.rds"))
+    new.errs.ls[["R2"]] <- t(apply(new.errs.ls[["MSE"]], 1, 
+                                   function(x) {1 - x / valid.vars}))
+    new.errs.ls[["Correlation"]] <- readRDS(paste0(save.path, type,
+                                                   "_corr.rds"))
+    new.errs.ls[["PC-index"]] <- readRDS(paste0(save.path, type, "_pc.rds"))
+    
+    new.agg.errs.ls[["R2"]] <- rowMeans(new.errs.ls[["R2"]])
+    new.agg.errs.ls[["Correlation"]] <- new.errs.ls[["Correlation"]] %>%
+      replace_na(replace = 0) %>%
+      rowMeans()
+    new.agg.errs.ls[["WPC-index"]] <- readRDS(paste0(save.path, type,
+                                                     "_wpc.rds"))
+    
+    new.errs <- map_dfr(
+      new.errs.ls,
+      function(x) {
+       out <- as.data.frame(x) %>%
+         setNames(colnames(drug.resp)) %>%
+         rownames_to_column("Method") %>%
+         mutate(filter = switch(save.path,
+                                "./results/var_filtered/" = 
+                                  "Variance-filtered (small p)",
+                                "./results/var_filtered_big_p/" =
+                                  "Variance-filtered (big p)",
+                                "./results/cor_filtered/" =
+                                  "Correlation-filtered",
+                                "./results/lasso_filtered/" = "Lasso-filtered"),
+                type = switch(type,
+                              "mirna" = "miRNA", "rnaseq" = "RNASeq",
+                              "methyl" = "Methylation", "prot" = "Protein",
+                              "concatenated" = "Concatenated"))
+       out$Method[out$Method == "Kernel"] <- "Kernel Ridge"
+       return(out)
+      }, .id = "metric"
+    )
+    new.agg.errs <- map_dfr(
+      new.agg.errs.ls,
+      function(x) {
+       out <- as.data.frame(x) %>%
+         rownames_to_column("Method") %>%
+         mutate(filter = switch(save.path,
+                                "./results/var_filtered/" = 
+                                  "Variance-filtered (small p)",
+                                "./results/var_filtered_big_p/" =
+                                  "Variance-filtered (big p)",
+                                "./results/cor_filtered/" =
+                                  "Correlation-filtered",
+                                "./results/lasso_filtered/" = "Lasso-filtered"),
+                type = switch(type,
+                              "mirna" = "miRNA", "rnaseq" = "RNASeq",
+                              "methyl" = "Methylation", "prot" = "Protein",
+                              "concatenated" = "Concatenated"))
+       out$Method[out$Method == "Kernel"] <- "Kernel Ridge"
+       return(out)
+      }, .id = "metric"
+    )
+    
+    errs.ls[[type]] <- rbind(errs.ls[[type]], new.errs)
+    agg.errs.ls[[type]] <- rbind(agg.errs.ls[[type]], new.agg.errs)
+  }
+}
+
+all.metrics <- reduce(errs.ls, rbind) %>%
+  mutate_if(is.character, as.factor)
+all.metrics.long <- gather(all.metrics, key = "Drug", value = "Value",
+                           -Method, -metric, -type, -filter, factor_key = T)
+
+agg.metrics <- reduce(agg.errs.ls, rbind) %>%
+  mutate_if(is.character, as.factor)
+
+```
+
+In Table \@ref(tab:table-pred-res-alt), we summarize the validation prediction accuracies across the different preprocessing pipelines. Note that these results have been aggregated across the 24 drugs. Also, since the miRNA and protein data sets do not differ across the various preprocessing methods, we omit these results and rather focus on the RNASeq, methylation, and concatenated data set comparisons. In particular, we see that the variance-filtering methods tend to perform better than the correlation-filtering and Lasso-filtering pipelines. Moreover, the small p variance-filtering pipeline yields similar accuracies to the large p variance-filtering pipeline. 
+
+```{r table-pred-res-alt, results = 'asis', echo = F}
+
+section_template <- "
+
+### %s {.unlisted .unnumbered .tabset .tabset-pills .tabset-fade}
+
+"
+
+# validation accuracies for non-integrative approaches
+for (t in c("RNASeq", "Methylation", "Concatenated")) {
+  cat(sprintf(section_template, paste(t, "Data")))
+  wide.agg.metrics.ls <- list()
+  for (m in unique(agg.metrics$metric)) {
+    wide.agg.metrics.ls[[m]] <- agg.metrics %>%
+      filter(type == t) %>%
+      group_by(metric) %>%
+      mutate(x = cell_spec(formatC(x, digits = 3, format = "g", flag = "#"),
+                           "html", bold = x == max(x))) %>%
+      ungroup() %>%
+      filter(metric == m) %>%
+      select(-metric, -type) %>%
+      spread(key = "filter", value = "x") %>%
+      column_to_rownames("Method")
+  }
+  
+  methods <- c("Kernel Ridge", "Elastic Net", "Lasso", "Lasso (ESCV)", "RF")
+  wide.agg.metrics <- reduce(wide.agg.metrics.ls, cbind)
+  wide.agg.metrics <- wide.agg.metrics[methods, ]
+  
+  head.vec <- c(1, 4, 4, 4)
+  names(head.vec) <- c(" ", as.character(unique(agg.metrics$metric)))
+  
+  kable(wide.agg.metrics, digits = 3, format = "html", booktabs = T, 
+        linesep = "", align = "c", escape = F, row.names = T, 
+        caption = paste0("For various preprocessing pipelines, we evaluate the validation WPC-index, average R^2, and average correlation across the 24 drug response models, trained on the ", t, " data set.")) %>%
+    kable_styling(latex_options = c("hold_position")) %>%
+    add_header_above(head.vec) %>%
+    scroll_box(kable_input = ., width = "100%") %>%
+    print()
+}
+
+```
+
+## {.unlisted .unnumbered}
+
+Given that the original motivation for this work was to perform feature selection and that we simply use prediction accuracy as a screening tool, we choose to focus our attention on the initially proposed variance-filtering procedure, taking the top $10\%$ of genes and $20\%$ of TSS, for several reasons. First, this procedure tends to give higher prediction accuracies and thus yields better fits for the data, as compared to the correlation-filtering and Lasso-filtering pipelines. Second, while marginal correlations and multivariate prediction models such as the Lasso look at the response, variance-filtering avoids any risk of data snooping and over-fitting. Third, the small p variance-filtering pipeline gives similar accuracies while requiring significantly less computation  than the variance-filtered model with twice as many features. For these reasons, we proceed with the small p variance-filtering pipeline in our primary analysis.
+
+# Bibliography {-}
