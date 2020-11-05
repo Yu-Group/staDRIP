@@ -1,7 +1,7 @@
 
 cache/*
-ccle_variance_filtered_cache/*
-ccle_variance_filtered_files/*
+staDRIP_pcs_documentation_cache/*
+staDRIP_pcs_documentation_files/*
 figure/*
 data/raw/*
 results/var_filtered/*_fits.rds
